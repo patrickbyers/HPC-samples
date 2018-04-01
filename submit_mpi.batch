@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH --job-name="mpi_particles" # Job Name
+#SBATCH --output="particles.o%j"   # Output and error file name (%j expands to jobID)
+#SBATCH --nodes=1                  # Total number of mpi tasks requested
+#SBATCH --ntasks-per-node=127      # Total number of mpi tasks requested
+#SBATCH --partition=compute        # Queue (partition) name -- normal, development, etc.
+#SBATCH -t 00:05:00      # Run time (hh:mm:ss) - 5 minutes
+#SBATCH -A TG-CIE180002
+
+ibrun ./particles 98177 test_particles_1.txt
+
+## Note: you program also needs to work for inputs not just random values.
+## Note: This results in 63 mpi tasks (3*21). So we have odd number.
