@@ -47,7 +47,7 @@ int read_file(struct Particle *set, int size, char *file_name);
 main(int argc, char** argv){
   int myRank;// Rank of process
   int p;// Number of processes
-  int n;// Number of total particles
+  int n, orig_n;// Number of total particles
   int previous;// Previous rank in the ring
   int next;// Next rank in the ring
   int tag = TAG;// Tag for message
@@ -123,6 +123,63 @@ main(int argc, char** argv){
   }
   */
   
+  
+  
+  
+  //MPI_Datatype ParticleStruct, ParticleType;
+    // This defines the mapping between the struct and the MPI Datatypes.
+    MPI_Datatype types[5] = {MPI_DOUBLE,
+         MPI_DOUBLE,
+         MPI_DOUBLE, 
+         MPI_DOUBLE,
+         MPI_DOUBLE};
+
+    // This is the length of each element, all 1 in this case.
+    int         blocklens[5] = {1, 1, 1, 1, 1}; 
+
+    // This is the offsets defined in the struct.
+    MPI_Aint     displacements[5];
+
+    // Get the displacements using the particles array. Note that the
+    // first displacment would be the pointer value of &particles. Then each
+    // subsequent element in the struct gives us the displacement.
+    MPI_Get_address(globals,          displacements); 
+    MPI_Get_address(&globals[0].y,    displacements+1); 
+    MPI_Get_address(&globals[0].mass, displacements+2); 
+    MPI_Get_address(&globals[0].fx,   displacements+3); 
+    MPI_Get_address(&globals[0].fy,   displacements+4); 
+
+    // Now convert these addresses into actual displacements.
+    MPI_Aint     base;
+    base = displacements[0];
+    int i;
+    for (i=0; i < 5; i++) {
+      displacements[i] = displacements[i] - base;
+      //printf("displacements[%d] = %d\n",i,displacements[i]);
+    }
+
+    // Now we create the particle struct.
+    MPI_Type_create_struct(5, blocklens, displacements, types, &ParticleStruct);
+
+    // Once we have that we can get the size of a single particle.
+    MPI_Aint sizeOfParticle;
+    MPI_Get_address(globals+1, &sizeOfParticle);
+    sizeOfParticle = sizeOfParticle - base;
+    //printf("sizeOfParticle = %d\n", sizeOfParticle);
+
+    // We can then create an optimized version of this type.
+    MPI_Type_create_resized(ParticleStruct, 0, sizeOfParticle, &ParticleType);
+
+    // Lastly, we commit this type to MPI for use!
+    MPI_Type_commit(&ParticleType);
+  
+  
+  
+  
+  
+  
+  
+  
   // checking for file information
   if(argc == 3){
     if(myRank == 0){
@@ -139,7 +196,6 @@ main(int argc, char** argv){
           globals[j].fy = 0.0;
           globals[j].mass = 0.0;
         }
-        n = (n+p)-(n%p);
       }
     }
     
@@ -167,7 +223,7 @@ main(int argc, char** argv){
 
     // YOUR CODE GOES HERE (distributing particles among processors)
     
-    
+    /*
     //MPI_Datatype ParticleStruct, ParticleType;
     // This defines the mapping between the struct and the MPI Datatypes.
     MPI_Datatype types[5] = {MPI_DOUBLE,
@@ -214,7 +270,7 @@ main(int argc, char** argv){
 
     // Lastly, we commit this type to MPI for use!
     MPI_Type_commit(&ParticleType);
-
+    */
     
     
     // Distribute the particles
@@ -250,13 +306,10 @@ main(int argc, char** argv){
       locals[number-1].fx = 0.0;
       locals[number-1].fy = 0.0;
       locals[number-1].mass = 0.0;
-    }
-    if(n%p != 0) {
-      n = (n+p)-(n%p);
-    }  
+    } 
   }
   
-/*  
+  /*
   for(j = 0; j < number; j++) {
     printf("Rank %d - local particles[%d] <%f, %f, %f, %f, %f> 0x%08x - 0x%08x\n", 
     myRank,
@@ -270,6 +323,7 @@ main(int argc, char** argv){
     &locals[j].fy);
   }
   */
+
   
   
   // starting timer
@@ -299,23 +353,6 @@ main(int argc, char** argv){
   // Compute interaction with locals and remotes (in that order)
   compute_interaction(locals, remotes, number);
   
-  
-  /*
-  for(j = 0; j < number; j++) {
-    printf("Rank %d - 1 calc local particles[%d] <%f, %f, %f, %f, %f> 0x%08x - 0x%08x\n", 
-    myRank,
-    j,
-    locals[j].x, 
-    locals[j].y, 
-    locals[j].mass,
-    locals[j].fx,
-    locals[j].fy,
-    &locals[j].x,
-    &locals[j].fy);
-  }
-  */
-
-  
   // send remotes forward and repeat steps for total of (p-1)/2 steps
   for (j = 1; j  < (p-1)/2; j++) {
     MPI_Isend(remotes, number, ParticleType, next, TAG, MPI_COMM_WORLD, &request[0]);
@@ -341,6 +378,7 @@ main(int argc, char** argv){
   // stopping timer
   if(myRank == 0){
     end_time = MPI_Wtime();
+    printf("Threads: %d\t\tParticles: %d\n", p, n);
     printf("Duration: %f seconds\n", (end_time-start_time));
   }
   
@@ -349,7 +387,7 @@ main(int argc, char** argv){
     
     // YOUR CODE GOES HERE (collect particles at rank 0)
     MPI_Gather(locals, number, ParticleType, globals, number, ParticleType, 0, MPI_COMM_WORLD);
-
+    
     if(myRank == 0) {
       print_particles(globals,n);
     }
